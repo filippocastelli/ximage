@@ -914,7 +914,12 @@ def ximage_main(prog_name='ximage'):
     parser_stats = subparsers.add_parser('stats', help='Show some indexed directory statistics')
     parser_stats.add_argument('-D', '--root', type=str, required=False, default=os.getcwd(), help='Root directory path (default: cwd)')
     parser_stats.set_defaults(func=ximage_stats)
-
+    
+    # print usage if no args are used
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+        
     args = parser.parse_args()
     sys.exit(args.func(args))
 
