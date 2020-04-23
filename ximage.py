@@ -9,6 +9,7 @@ from hashlib import sha1
 from datetime import datetime
 from string import Template
 import pickle
+from functools import reduce
 
 XMP_NS_ALIQUIS = 'http://bioretics.com/aliquis'
 
@@ -361,7 +362,8 @@ def ximage_import(args):
         for root in roots:
             parent.children.append(root)
             build_hierarchy(blobs_children, root)
-
+            
+            
     mask = cv2.imread(args.mask, -1)
 
     # Count number of classes
@@ -565,7 +567,7 @@ def _ximage_index_connect(args, create=False):
     sqlite3.register_converter('uuid', lambda buf: UUID(bytes=buf))
     sqlite3.register_adapter(XValue, lambda x: pickle.dumps(x.val))
     sqlite3.register_adapter(np.ndarray, lambda a: np.getbuffer(a))
-    sqlite3.register_adapter(UUID, lambda uuid: buffer(uuid.get_bytes()))
+    sqlite3.register_adapter(UUID, lambda uuid: memoryview(uuid.get_bytes()))
 
     index_path = os.path.join(args.root, '.ximage-index.db')
     if not create:
