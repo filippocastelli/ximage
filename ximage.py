@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
+import logging
 import numpy as np
 import os, sys, argparse, cv2, ast
 from libxmp import XMPFiles, XMPMeta, XMPError, XMPIterator, consts
@@ -10,6 +11,8 @@ from datetime import datetime
 from string import Template
 import pickle
 from functools import reduce
+
+from ximage_utils import ximage_export
 
 XMP_NS_ALIQUIS = 'http://bioretics.com/aliquis'
 
@@ -38,6 +41,14 @@ class XImageParseError(Exception):
 
     def __str__(self):
         return 'parsing tag "%s"' % (self.tag_name,)
+    
+class XImageDrawError(Exception):
+    def __init__(self, color, colormap):
+        self.color = color
+        self.colormap = colormap
+
+    def __str__(self):
+        return 'invalid color vector {} from colormap {}'.format(self.color, self.colormap)
 
 class XImageMeta(object):
     XMP_TEMPLATE = """<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Exempi + XMP Core 5.1.2">
@@ -82,7 +93,7 @@ class XImageMeta(object):
 
     @staticmethod
     def parse(xmp_or_str):
-        if type(xmp_or_str) in [ str ] + ([ unicode ] if sys.version_info[0] == 2 else []):
+        if type(xmp_or_str) is str:
             xmp = XMPMeta()
             xmp.parse_from_str(xmp_or_str)
         else:
@@ -238,11 +249,18 @@ class XBlob(object):
         return self.get_contour_area() - sum([ b.get_contour_area() for b in self.children ])
 
     def draw(self, im, colormap, filled=False):
+        # NOTE: I think colormap is supposed to be a {idx : (r,g,b,alpha)} dictionary
+        # but can also be a {idx : (grayscale,)} dict
+        
         classid = self.get_classid()
         color_alpha = colormap[classid]
-        color = tuple(color_alpha[:3])
+        color = tuple(color_alpha[:3]) #first 3 components are (r,g,b)
+        
+        if not (len(color_alpha) == 4 or len(color_alpha) == 1):
+            raise XImageDrawError(color_alpha, colormap)
+        
         if filled:
-            if len(color_alpha) == 4:
+            if len(color_alpha) == 4: #if (r,g,b,alpha)
                 overlay = im.copy()
                 alpha = color_alpha[3] / 255.0
                 cv2.fillPoly(overlay, [ self.points ], color)
@@ -435,13 +453,8 @@ def ximage_import(args):
     im_meta.write(args.path)
     return 0
 
-def ximage_export(args):
-    im, im_meta = ximread(args.path)
-    colormap = { i: (i if c.remap is None else c.remap,) for i, c in enumerate(im_meta.classes) }
-    mask = np.full(im.shape[:2], 255, dtype=np.uint8)
-    for item in im_meta.items:
-        for blob in item.blobs:
-            blob.draw(mask, colormap, True)
+def ximage_export_script(args):
+    mask = ximage_export(args.path)
     cv2.imwrite(args.mask, mask)
     return 0
 
@@ -566,15 +579,11 @@ def _ximage_index_connect(args, create=False):
     sqlite3.register_converter('uuid', lambda buf: UUID(bytes=buf))
     sqlite3.register_adapter(XValue, lambda x: pickle.dumps(x.val))
     sqlite3.register_adapter(np.ndarray, lambda a: np.getbuffer(a))
-    
-    if sys.version_info[0] == 2:
-        sqlite3.register_adapter(UUID, lambda uuid: buffer(uuid.get_bytes()))
-    else:
-        sqlite3.register_adapter(UUID, lambda uuid: memoryview(uuid.get_bytes()))
+    sqlite3.register_adapter(UUID, lambda uuid: memoryview(uuid.get_bytes()))
 
     index_path = os.path.join(args.root, '.ximage-index.db')
     if not create:
-        # Try to open existing database path (raise IOError)
+        # Try to open existing database path (raise IOError)    
         with open(index_path, 'r') as f:
             pass
 
@@ -778,7 +787,7 @@ def ximage_query(args):
 
     def xeval_unaryop(node, ctx):
         if type(node.op) == ast.Not:
-            return ctx.all_paths - xeval(node.operand, cur)
+            return ctx.all_paths - xeval(node.operand, ctx)
         else:
             pass # Raise
 
@@ -877,7 +886,7 @@ def ximage_main(prog_name='ximage'):
     parser_export = subparsers.add_parser('export', help='Export index mask from an image')
     parser_export.add_argument('path', type=str, help='Image path')
     parser_export.add_argument('mask', type=str, help='Index mask path')
-    parser_export.set_defaults(func=ximage_export)
+    parser_export.set_defaults(func=ximage_export_script)
 
     parser_inject = subparsers.add_parser('inject', help='Add blobs and metadata to an image')
     parser_inject.add_argument('metadata', type=str, help='XML')
