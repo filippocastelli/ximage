@@ -28,7 +28,7 @@ def ximwrite(path, im, meta):
 # =============================================================================
 # XIMAGE EXPORT
 # =============================================================================
-def ximage_export(fpath, return_img=False, mode="single"):
+def ximage_export(fpath, return_img=False, mode="single", invert=False):
     """
     Ximage export functionality
     convert ximage segmentations to indexmasks
@@ -43,6 +43,8 @@ def ximage_export(fpath, return_img=False, mode="single"):
         "multi" mode returns multiple segmentation masks, one for each class
     return_img : bool
         if true returns (img, mask)
+    invert : bool, optional
+        invert black/white label format in "multi" mode. Default is False.
     Returns
     -------
     img (opt) : ndarray
@@ -73,14 +75,17 @@ def ximage_export(fpath, return_img=False, mode="single"):
         # collect all blobs
         blobs = [blob for item in im_meta.items for blob in item.blobs]
         mask = {} 
+        foreground_color = 255 if invert else 0
+        background_color = 255 -foreground_color
+        
         for seg_class, seg_class_idx in classes_dict.items():
             # NOTE: I'm indexing on remap, not sure if that's the correct thing to do
             blobs_per_class = [blob for blob in blobs if blob.get_classid() == seg_class_idx[1]]
-            class_mask = np.full(im.shape[:2], 255, dtype=np.uint8)
+            class_mask = np.full(im.shape[:2], background_color, dtype=np.uint8)
             
             for blob in blobs_per_class:
                 blob.draw(im=class_mask,
-                          colormap={seg_class_idx[1] : (0,)},
+                          colormap={seg_class_idx[1] : (foreground_color,)},
                           filled=True)
             mask[seg_class] = class_mask
     
