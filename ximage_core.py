@@ -1,5 +1,7 @@
 import datetime
 from uuid import uuid4, UUID
+import pickle
+import pathlib
 
 import numpy as np
 import cv2
@@ -37,6 +39,9 @@ class XImageMeta(object):
         return xmp
 
     def write(self, path):
+        if type(path) == pathlib.PosixPath:
+            # convert to string in case it's a path
+            path = str(path)
         xmpfile = XMPFiles(file_path=path, open_forupdate=True)
         xmp = self.to_xmp()
         #assert xmpfile.can_put_xmp(xmp)
@@ -45,6 +50,10 @@ class XImageMeta(object):
 
     @staticmethod
     def read(path):
+        
+        if type(path) == pathlib.PosixPath:
+            # convert to string in case it's a path
+            path = str(path) 
         xmpfile = XMPFiles(file_path=path, open_forupdate=False)
         xmp = xmpfile.get_xmp()
         if xmp is None:
@@ -216,7 +225,9 @@ class XBlob(object):
         color_alpha = colormap[classid]
         color = tuple(color_alpha[:3]) #first 3 components are (r,g,b)
         
-        if not (len(color_alpha) == 4 or len(color_alpha) == 1):
+        if not (len(color_alpha) in [1,3,4]):
+            # color_alpha should either be
+            # (r,g,b,a) or (r,g,b) or (g)
             raise XImageDrawError(color_alpha, colormap)
         
         if filled:
